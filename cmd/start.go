@@ -16,7 +16,6 @@ limitations under the License.
 package cmd
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"tcp-proxy/core"
@@ -28,6 +27,7 @@ import (
 var fromPort string
 var toPort string
 var whiteIpFile string
+var isDump bool
 
 // startCmd represents the start command
 var startCmd = &cobra.Command{
@@ -51,7 +51,7 @@ var startCmd = &cobra.Command{
 		}
 
 		log.Printf("Starting tcp-proxy from %s to %s", proxyPort, targetPort)
-		core.StartServer(proxyPort, targetPort, whiteIpFile)
+		core.StartServer(proxyPort, targetPort, whiteIpFile, isDump)
 	},
 }
 
@@ -79,6 +79,8 @@ func init() {
 	startCmd.MarkFlagRequired("to")
 
 	startCmd.Flags().StringVarP(&whiteIpFile, "whiteip", "w", "whiteip.txt", "White ip list file path")
+
+	startCmd.Flags().BoolVarP(&isDump, "dump", "D", false, "Dump all data")
 
 	// 绑定参数到viper,以便能从配置文件读取参数
 	viper.BindPFlags(startCmd.Flags())

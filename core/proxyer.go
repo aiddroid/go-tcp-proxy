@@ -28,7 +28,7 @@ import (
 )
 
 // Start proxy server
-func StartServer(proxyPort string, targetPort string, whiteIpFile string) {
+func StartServer(proxyPort string, targetPort string, whiteIpFile string, isDump bool) {
 	address := ":" + proxyPort
 	proxyAddr, err := net.ResolveTCPAddr("tcp", address)
 	if err != nil {
@@ -49,10 +49,10 @@ func StartServer(proxyPort string, targetPort string, whiteIpFile string) {
 	}
 	log.Printf("whiteIpList: %s", whiteIpList)
 
-	run(proxyListener, proxyPort, targetPort, whiteIpList)
+	run(proxyListener, proxyPort, targetPort, whiteIpList, isDump)
 }
 
-func run(proxyListener *net.TCPListener, proxyPort string, targetPort string, whiteIpList []byte) {
+func run(proxyListener *net.TCPListener, proxyPort string, targetPort string, whiteIpList []byte, isDump bool) {
 	for {
 		proxyConn, err := proxyListener.AcceptTCP()
 		if err != nil {
@@ -103,14 +103,14 @@ func run(proxyListener *net.TCPListener, proxyPort string, targetPort string, wh
 		// log.Println("goroutine Id:", GoId())
 
 		// read client data and send to target
-		go doProxy(proxyConn, targetConn, true)
+		go doProxy(proxyConn, targetConn, isDump, true)
 		// read target response data and reply to client
-		go doProxy(targetConn, proxyConn, false)
+		go doProxy(targetConn, proxyConn, isDump, false)
 	}
 }
 
 // do proxy between sockets
-func doProxy(readConn *net.TCPConn, writeConn *net.TCPConn, isProxy bool) {
+func doProxy(readConn *net.TCPConn, writeConn *net.TCPConn, isDump bool, isProxy bool) {
 	defer readConn.Close()
 	defer writeConn.Close()
 
@@ -124,7 +124,10 @@ func doProxy(readConn *net.TCPConn, writeConn *net.TCPConn, isProxy bool) {
 		}
 
 		log.Printf("Read %d bytes from %s", n, Conditional(isProxy, "client", "upstream"))
-		// log.Printf("data:%s", buffer[:n])
+
+		if isDump {
+			log.Printf("dump raw data:%s", buffer[:n])
+		}
 
 		n, err = writeConn.Write(buffer[:n])
 		if err != nil {

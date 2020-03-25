@@ -2,9 +2,9 @@
 A simple proxy that allow you serve TCP proxy from a port to another.
 
 ### features
-- TCP proxy
+- TCP port proxy
 - IP white list
-- daemon mode
+- raw data dump
 - logging
 
 #### usage
@@ -26,4 +26,4 @@ Flags:
 ```
 Example: Proxy MYSQL at port 80
 
-`sudo ./tcp-proxy start -f 80 -t 3306`
+`sudo ./tcp-proxy start -f 80 -t 3306 -l proxy.log`
