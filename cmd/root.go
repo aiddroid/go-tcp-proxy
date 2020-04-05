@@ -18,6 +18,7 @@ package cmd
 import (
   "fmt"
   "github.com/spf13/cobra"
+  "log"
   "os"
 
   "github.com/mitchellh/go-homedir"
@@ -49,17 +50,20 @@ func Execute() {
 
 func init() {
   cobra.OnInitialize(initConfig)
+  cobra.OnInitialize(initLogFile)
 
   // Here you will define your flags and configuration settings.
   // Cobra supports persistent flags, which, if defined here,
   // will be global for your application.
+  rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.tcp-proxy.yaml)")
+  rootCmd.PersistentFlags().StringVarP(&logFile, "logfile", "l", "", "log file path (default is STDOUT)")
 
   // Cobra also supports local flags, which will only run
   // when this action is called directly.
 
   // 绑定参数到viper,以便能从配置文件读取参数
-  //viper.BindPFlags(rootCmd.Flags())
-  //rootCmd.Flags().SortFlags = false
+  viper.BindPFlags(rootCmd.Flags())
+  rootCmd.Flags().SortFlags = false
 }
 
 
@@ -86,6 +90,15 @@ func initConfig() {
   // If a config file is found, read it in.
   if err := viper.ReadInConfig(); err == nil {
     fmt.Println("Using config file:", viper.ConfigFileUsed())
+  }
+}
+
+func initLogFile() {
+  if logFile != "" {
+    logWriter, err := os.OpenFile(logFile, os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
+    if err == nil {
+      log.SetOutput(logWriter)
+    }
   }
 }
 

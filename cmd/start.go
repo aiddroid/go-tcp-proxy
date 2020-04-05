@@ -17,7 +17,6 @@ package cmd
 
 import (
 	"log"
-	"os"
 	"tcp-proxy/core"
 
 	"github.com/spf13/cobra"
@@ -35,13 +34,6 @@ var startCmd = &cobra.Command{
 	Short: "Start TCP proxy",
 	Long: `Start TCP proxy from a port to another.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if logFile != "" {
-			logWriter, err := os.OpenFile(logFile, os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
-			if err == nil {
-				log.SetOutput(logWriter)
-			}
-		}
-
 		proxyPort := fromPort
 		targetPort := toPort
 
@@ -68,9 +60,6 @@ func init() {
 	// is called directly, e.g.:
 	// startCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.tcp-proxy.yaml)")
-	rootCmd.PersistentFlags().StringVarP(&logFile, "logfile", "l", "", "log file path (default is STDOUT)")
-
 	// 定义一系列命令行参数
 	startCmd.Flags().StringVarP(&fromPort, "from", "f", "", "From port, ig:7777")
 	startCmd.MarkFlagRequired("from")
@@ -80,7 +69,7 @@ func init() {
 
 	startCmd.Flags().StringVarP(&whiteIpFile, "whiteip", "w", "whiteip.txt", "White ip list file path")
 
-	startCmd.Flags().BoolVarP(&isDump, "dump", "D", false, "Dump all data")
+	startCmd.Flags().BoolVar(&isDump, "dump", false, "Dump all data")
 
 	// 绑定参数到viper,以便能从配置文件读取参数
 	viper.BindPFlags(startCmd.Flags())

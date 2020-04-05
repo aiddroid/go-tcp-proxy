@@ -27,6 +27,9 @@ import (
 	"time"
 )
 
+var whiteIpList *[]byte
+var whiteIpListTicker *time.Ticker
+
 // Start proxy server
 func StartServer(proxyPort string, targetPort string, whiteIpFile string, isDump bool) {
 	address := ":" + proxyPort
@@ -43,16 +46,31 @@ func StartServer(proxyPort string, targetPort string, whiteIpFile string, isDump
 	}
 	defer proxyListener.Close()
 
-	whiteIpList, err := ioutil.ReadFile(whiteIpFile)
+	// load white ip list and set ticker
+	loadWhiteIp(whiteIpFile)
+	whiteIpListTicker = time.NewTicker(time.Second * 30)
+	go func() {
+		for {
+			select {
+				case <-whiteIpListTicker.C: loadWhiteIp(whiteIpFile)
+			}
+		}
+	}()
+
+	run(proxyListener, proxyPort, targetPort, isDump)
+}
+
+func loadWhiteIp(whiteIpFile string) {
+	l, err := ioutil.ReadFile(whiteIpFile)
 	if err != nil {
 		log.Println("Read whitelist file failed:", whiteIpFile)
 	}
-	log.Printf("whiteIpList: %s", whiteIpList)
 
-	run(proxyListener, proxyPort, targetPort, whiteIpList, isDump)
+	whiteIpList = &l
+	log.Printf("whiteIpList: %s", *whiteIpList)
 }
 
-func run(proxyListener *net.TCPListener, proxyPort string, targetPort string, whiteIpList []byte, isDump bool) {
+func run(proxyListener *net.TCPListener, proxyPort string, targetPort string, isDump bool) {
 	for {
 		proxyConn, err := proxyListener.AcceptTCP()
 		if err != nil {
@@ -71,8 +89,9 @@ func run(proxyListener *net.TCPListener, proxyPort string, targetPort string, wh
 			clientIp = strings.Split(clientAddr.String(), ":")[0]
 		}
 
-		log.Println("Client connected from ", clientAddr, " ip:", clientIp)
-		if len(whiteIpList) > 0 && !strings.Contains(string(whiteIpList), clientIp){
+		ipList := string(*whiteIpList)
+		log.Println("Client connected from ", clientAddr, " ip:", clientIp, "ipList:", ipList)
+		if len(ipList) > 0 && !strings.Contains(ipList, clientIp){
 			html := fmt.Sprintf("<html><body>SERVER TIME: %s</body></html>", time.Now())
 			resp := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n%s", len(html), html)
 			// proxyConn.SetNoDelay(true)
@@ -97,7 +116,7 @@ func run(proxyListener *net.TCPListener, proxyPort string, targetPort string, wh
 		}
 
 		targetConn.SetKeepAlive(true)
-		targetConn.SetKeepAlivePeriod(time.Minute)
+		targetConn.SetKeepAlivePeriod(time.Hour)
 
 
 		// log.Println("goroutine Id:", GoId())
@@ -119,11 +138,12 @@ func doProxy(readConn *net.TCPConn, writeConn *net.TCPConn, isDump bool, isProxy
 	for {
 		n, err := readConn.Read(buffer)
 		if err != nil {
-			log.Printf("Cannot Read data, error:%s", err)
 			break
 		}
 
 		log.Printf("Read %d bytes from %s", n, Conditional(isProxy, "client", "upstream"))
+		log.Printf("read from %p: %s", readConn, Conditional(isProxy, "client", "upstream"))
+		log.Printf("write to %p: %s", writeConn, Conditional(isProxy, "client", "upstream"))
 
 		if isDump {
 			log.Printf("dump raw data:%s", buffer[:n])
@@ -131,7 +151,6 @@ func doProxy(readConn *net.TCPConn, writeConn *net.TCPConn, isDump bool, isProxy
 
 		n, err = writeConn.Write(buffer[:n])
 		if err != nil {
-			log.Printf("Cannot write data, error:%s", err)
 			break
 		}
 
