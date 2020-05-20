@@ -15,7 +15,7 @@ limitations under the License.
 */
 package main
 
-import "tcp-proxy/cmd"
+import "go-tcp-proxy/cmd"
 
 func main() {
   cmd.Execute()

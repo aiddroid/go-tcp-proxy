@@ -17,7 +17,9 @@ package core
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"github.com/thoas/go-funk"
 	"io/ioutil"
 	"log"
 	"net"
@@ -27,91 +29,170 @@ import (
 	"time"
 )
 
-var whiteIpList *[]byte
+var whiteIpList WhiteipList
 var whiteIpListTicker *time.Ticker
+var html *string
 
-// Start proxy server
-func StartServer(proxyPort string, targetPort string, whiteIpFile string, isDump bool) {
-	address := ":" + proxyPort
+type WhiteipList struct {
+	Ips []string `json:"ips"`
+}
+
+type ProxyCfg struct {
+	// 对外暴露的端口, 如443
+	FromPort string
+
+	// 对外暴露的端口 8379
+	ToPort string
+
+	// 白名单文件路径
+	WhiteIpFile string
+
+	// 默认html页面文件路径
+	HtmlFile string
+
+	// 是否dump全部数据
+	IsDump bool
+}
+
+// 启动代理服务器
+func StartServer(config ProxyCfg) {
+	address := ":" + config.FromPort
 	proxyAddr, err := net.ResolveTCPAddr("tcp", address)
 	if err != nil {
-		log.Fatalln("Cannot resolve proxyPort:", proxyPort)
+		log.Fatalln("Cannot resolve proxyPort:", config.FromPort)
 		return
 	}
 
 	proxyListener, err := net.ListenTCP("tcp", proxyAddr)
 	if err != nil {
-		log.Fatalln("Cannot listen tcp on port:", proxyPort, err)
+		log.Fatalln("Cannot listen tcp on port:", config.FromPort, err)
 		return
 	}
 	defer proxyListener.Close()
 
-	// load white ip list and set ticker
-	loadWhiteIp(whiteIpFile)
+	// 加载IP白名单并设置定时器更新
+	loadWhiteIp(config.WhiteIpFile)
 	whiteIpListTicker = time.NewTicker(time.Second * 30)
 	go func() {
 		for {
 			select {
-				case <-whiteIpListTicker.C: loadWhiteIp(whiteIpFile)
+				case <-whiteIpListTicker.C: loadWhiteIp(config.WhiteIpFile)
 			}
 		}
 	}()
+	
+	// 加载HTML
+	loadHtml(config.HtmlFile)
 
-	run(proxyListener, proxyPort, targetPort, isDump)
+	// run
+	run(proxyListener, config)
 }
 
-func loadWhiteIp(whiteIpFile string) {
-	l, err := ioutil.ReadFile(whiteIpFile)
-	if err != nil {
-		log.Println("Read whitelist file failed:", whiteIpFile)
+// 加载HTML文件
+func loadHtml(htmlFile string) {
+	if len(htmlFile) > 0 {
+		c, err := ioutil.ReadFile(htmlFile)
+		if err == nil {
+			s := string(c)
+			html = &s
+			return
+		}
 	}
 
-	whiteIpList = &l
-	log.Printf("whiteIpList: %s", *whiteIpList)
+	// 构造默认HTML
+	defaultHtml := fmt.Sprintf("<html>" +
+		"<head><title>Time Page</title></head>" +
+		"<body style=\"font-size:12px;\">SERVER TIME: %s</body>" +
+		"</html>", time.Now())
+	html = &defaultHtml
+	return
 }
 
-func run(proxyListener *net.TCPListener, proxyPort string, targetPort string, isDump bool) {
+// 加载IP白名单
+func loadWhiteIp(whiteIpFile string) {
+	bs, err := ioutil.ReadFile(whiteIpFile)
+	if err != nil {
+		log.Println("Read whitelist file failed:", whiteIpFile)
+		return
+	}
+
+	json.Unmarshal(bs, &whiteIpList)
+	log.Printf("whiteIpList: %s", whiteIpList)
+}
+
+// 存储IP到白名单
+func storeToWhiteIp(whiteIpFile string, ip string) error {
+	whiteIpList.Ips = append(whiteIpList.Ips, ip)
+	bs, err := json.MarshalIndent(whiteIpList, "", "    ")
+	if err != nil {
+		log.Println("Update whitelist failed, ip:", ip)
+		return err
+	}
+
+	return ioutil.WriteFile(whiteIpFile, bs, 0775)
+}
+
+// run
+func run(proxyListener *net.TCPListener, config ProxyCfg) {
 	for {
+		// 持续监听新请求
 		proxyConn, err := proxyListener.AcceptTCP()
 		if err != nil {
-			log.Fatalln("Cannot accept tcp connection via port:", proxyPort)
+			log.Fatalln("Cannot accept tcp connection via port:", config.FromPort)
 			return
 		}
 
+		// 保持连接
 		proxyConn.SetKeepAlive(true)
 		proxyConn.SetKeepAlivePeriod(time.Minute)
 
+		// 获取客户端IP
 		clientAddr := proxyConn.RemoteAddr()
-		var clientIp = ""
-		if strings.Contains(clientAddr.String(), "::") {
-			clientIp = clientAddr.String()[1:3]
-		} else {
-			clientIp = strings.Split(clientAddr.String(), ":")[0]
-		}
+		// 从clientAddr中解析IP
+		clientIp := parseClientIp(clientAddr)
+		log.Println("Client connected from ip:", clientIp)
 
-		ipList := string(*whiteIpList)
-		log.Println("Client connected from ", clientAddr, " ip:", clientIp, "ipList:", ipList)
-		if len(ipList) > 0 && !strings.Contains(ipList, clientIp){
-			html := fmt.Sprintf("<html><body>SERVER TIME: %s</body></html>", time.Now())
-			resp := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: %d\r\n\r\n%s", len(html), html)
-			// proxyConn.SetNoDelay(true)
-			proxyConn.Write([]byte(resp))
+		// 对不在白名单中的ip，进行特殊处理
+		if len(whiteIpList.Ips) > 0 && !funk.ContainsString(whiteIpList.Ips, clientIp){
+			// 只读取HTTP请求前100个字节
+			buffer := make([]byte, 100)
+			n, err := proxyConn.Read(buffer)
+			if err == nil {
+				// 如果是GET请求，则直接返回html
+				if strings.Index(string(buffer[:n]), "GET /") == 0 {
+					resp := httpResp(*html)
 
-			log.Printf("Filtered ip %s with HTTP", clientIp)
+					// proxyConn.SetNoDelay(true)
+					proxyConn.Write([]byte(resp))
+
+					log.Printf("Response HTML to ip:%s", clientIp)
+					log.Printf("Filtered ip: %s", clientIp)
+				}
+
+				// 如果是POST请求，则把ip加到白名单
+				if strings.Index(string(buffer[:n]), "POST /auth/ip") == 0 {
+					if e := storeToWhiteIp(config.WhiteIpFile, clientIp); e == nil {
+						proxyConn.Write([]byte(httpResp("SUCCESS")))
+					} else {
+						proxyConn.Write([]byte(httpResp("FAILED")))
+					}
+				}
+			}
+			proxyConn.Close()
 			continue
 		}
 
 		// target
-		address := ":" + targetPort
+		address := ":" + config.ToPort
 		targetAddr, err := net.ResolveTCPAddr("tcp", address)
 		if err != nil {
-			log.Fatalln("Cannot resolve targetPort:", targetPort)
+			log.Fatalln("Cannot resolve targetPort:", config.ToPort)
 			return
 		}
 
 		targetConn, err := net.DialTCP("tcp", nil, targetAddr)
 		if err != nil {
-			log.Println("Cannot connect to target port:", targetPort)
+			log.Println("Cannot connect to target port:", config.ToPort)
 			continue
 		}
 
@@ -121,29 +202,49 @@ func run(proxyListener *net.TCPListener, proxyPort string, targetPort string, is
 
 		// log.Println("goroutine Id:", GoId())
 
-		// read client data and send to target
-		go doProxy(proxyConn, targetConn, isDump, true)
-		// read target response data and reply to client
-		go doProxy(targetConn, proxyConn, isDump, false)
+		// 读取客户端数据发送给目标
+		go doProxy(proxyConn, targetConn, config.IsDump, true)
+
+		// 读取目标数据响应，返回给客户端
+		go doProxy(targetConn, proxyConn, config.IsDump, false)
 	}
 }
 
-// do proxy between sockets
+// 从clientAddr中解析出IP
+func parseClientIp(clientAddr net.Addr) string {
+	// loopback IP  [::1]:60940
+	if strings.Contains(clientAddr.String(), "::") {
+		return clientAddr.String()[1:3]
+	}
+
+	return strings.Split(clientAddr.String(), ":")[0]
+}
+
+// 构建http响应
+func httpResp(body string) string {
+	http := "HTTP/1.1 200 OK\r\n"
+	http += "Content-Type: text/html\r\n"
+	http += "Content-Length: %d\r\n\r\n"
+	http += "%s"
+	return fmt.Sprintf(http, len(body), body)
+}
+
+// 在sockets之间做代理转发
 func doProxy(readConn *net.TCPConn, writeConn *net.TCPConn, isDump bool, isProxy bool) {
 	defer readConn.Close()
 	defer writeConn.Close()
 
-	// read 100KB
-	buffer := make([]byte, 1024 * 100)
+	// 每次读取 500KB
+	buffer := make([]byte, 1024 * 500)
 	for {
 		n, err := readConn.Read(buffer)
 		if err != nil {
 			break
 		}
 
-		log.Printf("Read %d bytes from %s", n, Conditional(isProxy, "client", "upstream"))
-		log.Printf("read from %p: %s", readConn, Conditional(isProxy, "client", "upstream"))
-		log.Printf("write to %p: %s", writeConn, Conditional(isProxy, "client", "upstream"))
+		// log.Printf("Read %d bytes from %s", n, Conditional(isProxy, "client", "upstream"))
+		// log.Printf("read from %p: %s", readConn, Conditional(isProxy, "client", "upstream"))
+		// log.Printf("write to %p: %s", writeConn, Conditional(isProxy, "client", "upstream"))
 
 		if isDump {
 			log.Printf("dump raw data:%s", buffer[:n])
@@ -154,7 +255,7 @@ func doProxy(readConn *net.TCPConn, writeConn *net.TCPConn, isDump bool, isProxy
 			break
 		}
 
-		log.Printf("Write %d bytes to %s", n, Conditional(isProxy, "upstream", "client"))
+		// log.Printf("Write %d bytes to %s", n, Conditional(isProxy, "upstream", "client"))
 	}
 
 }

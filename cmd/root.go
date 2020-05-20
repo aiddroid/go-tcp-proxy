@@ -31,7 +31,7 @@ var logFile string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-  Use:   "tcp-proxy",
+  Use:   "go-tcp-proxy",
   Short: "Start TCP proxy",
   Long: `Start TCP proxy from a port to another.`,
   // Uncomment the following line if your bare application
@@ -55,7 +55,7 @@ func init() {
   // Here you will define your flags and configuration settings.
   // Cobra supports persistent flags, which, if defined here,
   // will be global for your application.
-  rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.tcp-proxy.yaml)")
+  rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/.go-tcp-proxy.yaml)")
   rootCmd.PersistentFlags().StringVarP(&logFile, "logfile", "l", "", "log file path (default is STDOUT)")
 
   // Cobra also supports local flags, which will only run
@@ -80,9 +80,9 @@ func initConfig() {
       os.Exit(1)
     }
 
-    // Search config in home directory with name ".tcp-proxy" (without extension).
+    // Search config in home directory with name ".go-tcp-proxy" (without extension).
     viper.AddConfigPath(home)
-    viper.SetConfigName(".tcp-proxy")
+    viper.SetConfigName(".go-tcp-proxy")
   }
 
   viper.AutomaticEnv() // read in environment variables that match

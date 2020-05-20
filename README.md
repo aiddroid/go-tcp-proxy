@@ -24,6 +24,8 @@ Flags:
   -l, --logfile string   log file path (default is STDOUT)
 
 ```
-Example: Proxy MYSQL at port 80
+Example: Proxy MYSQL at port 80:
+`sudo ./tcp-proxy start -f 80 -t 3306 -w whiteip.json -l proxy.log`
 
-`sudo ./tcp-proxy start -f 80 -t 3306 -l proxy.log`
+Auth current IP to white IP list:
+`curl -XPOST http://your-server-ip:port/auth/ip`

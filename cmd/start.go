@@ -17,16 +17,13 @@ package cmd
 
 import (
 	"log"
-	"tcp-proxy/core"
+	"go-tcp-proxy/core"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-var fromPort string
-var toPort string
-var whiteIpFile string
-var isDump bool
+var pCfg core.ProxyCfg
 
 // startCmd represents the start command
 var startCmd = &cobra.Command{
@@ -34,16 +31,13 @@ var startCmd = &cobra.Command{
 	Short: "Start TCP proxy",
 	Long: `Start TCP proxy from a port to another.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		proxyPort := fromPort
-		targetPort := toPort
-
-		if proxyPort == "" || targetPort == "" {
-			log.Println("Usage example: tcp-proxy start 443 8379")
+		if pCfg.FromPort == "" || pCfg.ToPort == "" {
+			log.Println("Usage example: go-tcp-proxy start 443 8379")
 			return
 		}
 
-		log.Printf("Starting tcp-proxy from %s to %s", proxyPort, targetPort)
-		core.StartServer(proxyPort, targetPort, whiteIpFile, isDump)
+		log.Println("Starting TCP proxy with config:", pCfg)
+		core.StartServer(pCfg)
 	},
 }
 
@@ -61,15 +55,22 @@ func init() {
 	// startCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 
 	// 定义一系列命令行参数
-	startCmd.Flags().StringVarP(&fromPort, "from", "f", "", "From port, ig:7777")
+	// 对外暴露的端口
+	startCmd.Flags().StringVarP(&pCfg.FromPort, "from", "f", "", "Exposed port, E.g:443")
 	startCmd.MarkFlagRequired("from")
 
-	startCmd.Flags().StringVarP(&toPort, "to", "t", "", "To port, ig:8080")
+	// 要转发的端口
+	startCmd.Flags().StringVarP(&pCfg.ToPort, "to", "t", "", "Port needs to be proxied, E.g:8379")
 	startCmd.MarkFlagRequired("to")
 
-	startCmd.Flags().StringVarP(&whiteIpFile, "whiteip", "w", "whiteip.txt", "White ip list file path")
+	// 白名单文件路径
+	startCmd.Flags().StringVarP(&pCfg.WhiteIpFile, "whiteip", "w", "whiteip.json", "White IP list file path")
 
-	startCmd.Flags().BoolVar(&isDump, "dump", false, "Dump all data")
+	// 默认html页面文件路径
+	startCmd.Flags().StringVarP(&pCfg.HtmlFile, "html", "H", "", "HTML file path for filtered IPs")
+
+	// 是否dump全部数据
+	startCmd.Flags().BoolVar(&pCfg.IsDump, "dump", false, "If all data dumped as logs")
 
 	// 绑定参数到viper,以便能从配置文件读取参数
 	viper.BindPFlags(startCmd.Flags())
