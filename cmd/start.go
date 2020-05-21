@@ -16,8 +16,11 @@ limitations under the License.
 package cmd
 
 import (
-	"log"
+	"github.com/thoas/go-funk"
 	"go-tcp-proxy/core"
+	"log"
+	"math/rand"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -31,9 +34,9 @@ var startCmd = &cobra.Command{
 	Short: "Start TCP proxy",
 	Long: `Start TCP proxy from a port to another.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if pCfg.FromPort == "" || pCfg.ToPort == "" {
-			log.Println("Usage example: go-tcp-proxy start 443 8379")
-			return
+		if pCfg.AuthUri == "" {
+			rand.Seed(time.Now().UnixNano())
+			pCfg.AuthUri = "/auth/" + funk.RandomString(16)
 		}
 
 		log.Println("Starting TCP proxy with config:", pCfg)
@@ -65,6 +68,9 @@ func init() {
 
 	// 白名单文件路径
 	startCmd.Flags().StringVarP(&pCfg.WhiteIpFile, "whiteip", "w", "whiteip.json", "White IP list file path")
+
+	// 新IP认证URI
+	startCmd.Flags().StringVarP(&pCfg.AuthUri, "auth", "a", "", "New IP auth URI")
 
 	// 默认html页面文件路径
 	startCmd.Flags().StringVarP(&pCfg.HtmlFile, "html", "H", "", "HTML file path for filtered IPs")

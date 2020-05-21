@@ -50,6 +50,9 @@ type ProxyCfg struct {
 	// 默认html页面文件路径
 	HtmlFile string
 
+	// 新IP认证URI
+	AuthUri string
+
 	// 是否dump全部数据
 	IsDump bool
 }
@@ -129,7 +132,12 @@ func storeToWhiteIp(whiteIpFile string, ip string) error {
 		return err
 	}
 
-	return ioutil.WriteFile(whiteIpFile, bs, 0775)
+	if e := ioutil.WriteFile(whiteIpFile, bs, 0775); e != nil {
+		return e
+	}
+
+	log.Println("Update whitelist succeed, ip:", ip)
+	return nil
 }
 
 // run
@@ -158,8 +166,15 @@ func run(proxyListener *net.TCPListener, config ProxyCfg) {
 			buffer := make([]byte, 100)
 			n, err := proxyConn.Read(buffer)
 			if err == nil {
-				// 如果是GET请求，则直接返回html
-				if strings.Index(string(buffer[:n]), "GET /") == 0 {
+				// 如果是AUTH请求，则把ip加到白名单
+				if strings.Index(string(buffer[:n]), "GET " + config.AuthUri) == 0 {
+					if e := storeToWhiteIp(config.WhiteIpFile, clientIp); e == nil {
+						proxyConn.Write([]byte(httpResp("SUCCESS")))
+					} else {
+						proxyConn.Write([]byte(httpResp("FAILED")))
+					}
+				} else if strings.Index(string(buffer[:n]), "GET /") == 0 {
+					// 如果是其他GET请求，则直接返回html
 					resp := httpResp(*html)
 
 					// proxyConn.SetNoDelay(true)
@@ -167,15 +182,6 @@ func run(proxyListener *net.TCPListener, config ProxyCfg) {
 
 					log.Printf("Response HTML to ip:%s", clientIp)
 					log.Printf("Filtered ip: %s", clientIp)
-				}
-
-				// 如果是POST请求，则把ip加到白名单
-				if strings.Index(string(buffer[:n]), "POST /auth/ip") == 0 {
-					if e := storeToWhiteIp(config.WhiteIpFile, clientIp); e == nil {
-						proxyConn.Write([]byte(httpResp("SUCCESS")))
-					} else {
-						proxyConn.Write([]byte(httpResp("FAILED")))
-					}
 				}
 			}
 			proxyConn.Close()
