@@ -102,10 +102,10 @@ func loadHtml(htmlFile string) {
 	}
 
 	// 构造默认HTML
-	defaultHtml := fmt.Sprintf("<filteredHtml>" +
+	defaultHtml := fmt.Sprintf("<html>" +
 		"<head><title>Time Page</title></head>" +
 		"<body style=\"font-size:12px;\">SERVER TIME: %s</body>" +
-		"</filteredHtml>", time.Now())
+		"</html>", time.Now())
 	filteredHtml = defaultHtml
 	return
 }
