@@ -31,7 +31,7 @@ import (
 
 var whiteIpList WhiteipList
 var whiteIpListTicker *time.Ticker
-var html *string
+var filteredHtml string
 
 type WhiteipList struct {
 	Ips []string `json:"ips"`
@@ -96,18 +96,17 @@ func loadHtml(htmlFile string) {
 	if len(htmlFile) > 0 {
 		c, err := ioutil.ReadFile(htmlFile)
 		if err == nil {
-			s := string(c)
-			html = &s
+			filteredHtml = string(c)
 			return
 		}
 	}
 
 	// 构造默认HTML
-	defaultHtml := fmt.Sprintf("<html>" +
+	defaultHtml := fmt.Sprintf("<filteredHtml>" +
 		"<head><title>Time Page</title></head>" +
 		"<body style=\"font-size:12px;\">SERVER TIME: %s</body>" +
-		"</html>", time.Now())
-	html = &defaultHtml
+		"</filteredHtml>", time.Now())
+	filteredHtml = defaultHtml
 	return
 }
 
@@ -175,7 +174,7 @@ func run(proxyListener *net.TCPListener, config ProxyCfg) {
 					}
 				} else if strings.Index(string(buffer[:n]), "GET /") == 0 {
 					// 如果是其他GET请求，则直接返回html
-					resp := httpResp(*html)
+					resp := httpResp(filteredHtml)
 
 					// proxyConn.SetNoDelay(true)
 					proxyConn.Write([]byte(resp))
@@ -229,7 +228,7 @@ func parseClientIp(clientAddr net.Addr) string {
 // 构建http响应
 func httpResp(body string) string {
 	http := "HTTP/1.1 200 OK\r\n"
-	http += "Content-Type: text/html\r\n"
+	http += "Content-Type: text/filteredHtml\r\n"
 	http += "Content-Length: %d\r\n\r\n"
 	http += "%s"
 	return fmt.Sprintf(http, len(body), body)
