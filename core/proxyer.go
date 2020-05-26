@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/thoas/go-funk"
+	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -186,57 +187,35 @@ func handle(clientConn *net.TCPConn, config ProxyCfg) {
 	//remoteConn.SetKeepAlive(true)
 
 	// log.Println("goroutine Id:", GoId())
-	sync := make(chan bool, 2)
+	// 只使用大小为1的chan，因为read from client解除阻塞后，write to client会同时解除
+	sync := make(chan bool, 1)
 	// 读取客户端数据发送给目标
-	transfer(clientConn, remoteConn, sync, config, true)
+	go transfer(clientConn, remoteConn, sync, config, true)
 	// 读取目标数据响应，返回给客户端
-	transfer(remoteConn, clientConn, sync, config, false)
-	log.Println("synced")
+	go transfer(remoteConn, clientConn, sync, config, false)
+
+	// 阻塞
+	<-sync
+	log.Println("synced\n")
 }
 
 // 转发数据
 func transfer(srcConn *net.TCPConn, dstConn *net.TCPConn, sync chan bool, config ProxyCfg, isClient bool) {
 	log.Println(Conditional(isClient, "req: client => proxy => target", "resp: client <= proxy <= target"))
-
-	srcConn.SetReadDeadline(time.Now().Add(time.Second * 5))
-	// read 1024KB=1MB
-	size := 1024 * 1024
-	for {
-		bs := make([]byte, size)
-		nr, er := srcConn.Read(bs)
-		if er != nil {
-			sync <- false
-			log.Println("read err:", er)
-			return
-		}
-
-		if config.IsDump {
-			log.Println("raw data:", string(bs))
-		}
-
-		_, ew := dstConn.Write(bs)
-		if ew != nil {
-			sync <- false
-			log.Println("write err:", ew)
-			return
-		}
-
-		if nr < size {
-			sync <- true
-			return
-		}
-	}
+	// copy时若没有数据，go rountine 会阻塞并切换到其他go routine执行，直到有数据再切回来
+	io.Copy(dstConn, srcConn)
+	sync <- true
 }
 
 // 处理新IP客户端
 func handleNewIpClient(proxyConn *net.TCPConn, clientIp string, config ProxyCfg) {
 	defer proxyConn.Close()
 
-	proxyConn.SetReadDeadline(time.Now().Add(time.Second * 3))
 	// 只读取HTTP请求前100个字节
 	buffer := make([]byte, 100)
 	n, err := proxyConn.Read(buffer)
 	if err != nil {
+		log.Println("read GET request err:", err)
 		return
 	}
 
