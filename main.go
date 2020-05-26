@@ -18,5 +18,5 @@ package main
 import "go-tcp-proxy/cmd"
 
 func main() {
-  cmd.Execute()
+	cmd.Execute()
 }

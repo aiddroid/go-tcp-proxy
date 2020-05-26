@@ -32,7 +32,7 @@ var pCfg core.ProxyCfg
 var startCmd = &cobra.Command{
 	Use:   "start",
 	Short: "Start TCP proxy",
-	Long: `Start TCP proxy from a port to another.`,
+	Long:  `Start TCP proxy from a port to another.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if pCfg.AuthUri == "" {
 			rand.Seed(time.Now().UnixNano())
