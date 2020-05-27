@@ -37,7 +37,7 @@ func ParseClientIp(clientAddr net.Addr) string {
 // 构建http响应
 func HttpResp(body string) string {
 	http := "HTTP/1.1 200 OK\r\n"
-	http += "Content-Type: text/filteredHtml\r\n"
+	http += "Content-Type: text/html\r\n"
 	http += "Content-Length: %d\r\n\r\n"
 	http += "%s"
 	return fmt.Sprintf(http, len(body), body)

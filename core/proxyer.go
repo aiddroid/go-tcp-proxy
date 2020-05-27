@@ -126,7 +126,7 @@ func storeToWhiteIp(whiteIpFile string, ip string) error {
 	whiteIpList.Ips = append(whiteIpList.Ips, ip)
 	bs, err := json.MarshalIndent(whiteIpList, "", "    ")
 	if err != nil {
-		log.Println("Update whitelist failed, ip:", ip)
+		log.Println("Update whitelist failed, add ip:", ip)
 		return err
 	}
 
